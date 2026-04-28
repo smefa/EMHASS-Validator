@@ -6,7 +6,8 @@ A single-file browser tool for validating `Passed runtime parameters` entries in
 
 1. Download `emhass-log-validator.html`
 2. Open it in any web browser — no server or internet connection required
-3. Paste your EMHASS log and click **Validate log**
+3. To get the logs from MEHASS in Home Assistant go to Settings / Apps / EMAHSS / Logs
+4. Paste your EMHASS log and click **Validate log**
 
 ## What it does
 
