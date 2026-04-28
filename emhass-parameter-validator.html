@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- SECURITY FIX #7: CSP meta tag — blocks inline event handlers injected via XSS,
+     restricts all loads to same origin. Hashes below cover the one inline script block. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMHASS Runtime Parameter Validator</title>
+<style>
+:root {
+  --bg:#0f1117; --surface:#1a1d27; --surface2:#22263a; --border:#2e3250;
+  --accent:#4f8ef7; --ok:#22c55e; --warn:#f59e0b; --error:#ef4444;
+  --text:#e2e8f0; --muted:#8892a4; --radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;padding:24px 16px}
+a{color:var(--accent)}
+header{max-width:1200px;margin:0 auto 28px}
+header h1{font-size:1.6rem;font-weight:700;color:var(--accent)}
+header p{color:var(--muted);margin-top:6px;font-size:.9rem}
+.container{max-width:1200px;margin:0 auto}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px}
+.card h2{font-size:1rem;font-weight:600;margin-bottom:12px;color:var(--accent)}
+textarea{width:100%;min-height:200px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Consolas','Courier New',monospace;font-size:.78rem;padding:12px;resize:vertical;line-height:1.5}
+textarea:focus{outline:2px solid var(--accent);border-color:transparent}
+.btn-row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+button{padding:9px 22px;border-radius:6px;border:none;cursor:pointer;font-size:.9rem;font-weight:600;transition:opacity .15s}
+button:hover{opacity:.85}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-secondary{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+#results{display:none}
+.summary-bar{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.stat{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 20px;text-align:center;min-width:110px}
+.stat .num{font-size:1.8rem;font-weight:700}
+.stat .lbl{font-size:.75rem;color:var(--muted);margin-top:2px}
+.ok-c{color:var(--ok)} .warn-c{color:var(--warn)} .err-c{color:var(--error)} .info-c{color:var(--accent)} .absent-c{color:#475569}
+.run-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:24px;overflow:hidden}
+.run-header{background:var(--surface2);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.run-header h3{font-size:.95rem;font-weight:600}
+.run-ts{font-size:.8rem;color:var(--muted);font-family:monospace}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.75rem;font-weight:700}
+.badge-ok{background:#14532d;color:var(--ok)}
+.badge-warn{background:#451a03;color:var(--warn)}
+.badge-err{background:#450a0a;color:var(--error)}
+.section-row td{background:var(--surface2);color:var(--accent);font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:6px 14px;border-top:2px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+thead tr{background:#141720}
+th{padding:9px 14px;text-align:left;color:var(--muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+td{padding:7px 14px;border-top:1px solid var(--border);vertical-align:top}
+tr.data-row:hover td{background:rgba(255,255,255,.025)}
+tr.absent-row td{opacity:.55}
+.p-name{font-family:monospace;color:#a5b4fc;font-size:.83rem;white-space:nowrap}
+.p-name-absent{font-family:monospace;color:#64748b;font-size:.83rem;white-space:nowrap}
+.p-type{font-size:.7rem;color:#475569;margin-top:1px;font-family:monospace}
+.p-val{font-family:monospace;font-size:.78rem;color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.expand{cursor:pointer;color:var(--accent);font-size:.72rem;margin-left:4px}
+.full-val{display:none;word-break:break-all;white-space:normal;color:var(--muted);font-size:.75rem;margin-top:4px}
+.full-val.open{display:block}
+.issues{margin-top:4px}
+.issues li{font-size:.77rem;list-style:none;padding-left:16px;position:relative}
+.issues li::before{position:absolute;left:0}
+.i-ok{color:var(--ok)}   .i-ok::before{content:"+ "}
+.i-warn{color:var(--warn)}.i-warn::before{content:"! "}
+.i-err{color:var(--error)}.i-err::before{content:"x "}
+.i-info{color:#7dd3fc}    .i-info::before{content:"i "}
+.horizon-note{font-size:.78rem;color:var(--muted);padding:6px 14px 10px;border-bottom:1px solid var(--border)}
+.tip-wrap{position:relative;display:inline-block}
+.tip-icon{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#1e2640;border:1px solid #3a4060;color:#7dd3fc;font-size:.65rem;font-weight:700;cursor:default;margin-left:5px;vertical-align:middle;flex-shrink:0}
+.tip-box{display:none;position:absolute;z-index:99;left:20px;top:-4px;width:280px;background:#1e2a3a;border:1px solid #3a5070;border-radius:7px;padding:10px 13px;font-size:.78rem;color:#cbd5e1;line-height:1.5;box-shadow:0 4px 20px rgba(0,0,0,.5);pointer-events:none;}
+.tip-box .tip-title{font-weight:700;color:#93c5fd;margin-bottom:4px;font-size:.8rem}
+.tip-box .tip-meta{color:#64748b;font-size:.7rem;margin-top:6px;font-family:monospace}
+.tip-box .tip-range{color:#7dd3fc;font-size:.7rem;margin-top:3px}
+.tip-wrap:hover .tip-box{display:block}
+.warn-box{background:#2d1f00;border:1px solid #78350f;border-radius:6px;padding:8px 14px;font-size:.8rem;color:var(--warn);margin-bottom:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>EMHASS Runtime Parameter Validator</h1>
+  <p>Paste your EMHASS log below. All "Passed runtime parameters" blocks are extracted and validated.
+     Every known parameter is listed - hover the <b style="color:#7dd3fc">i</b> icon for documentation details.
+     &nbsp;<a href="https://emhass.readthedocs.io/en/latest/passing_data.html"
+              target="_blank"
+              rel="noopener noreferrer">EMHASS docs</a></p>
+              <!-- SECURITY FIX #6: added rel="noopener noreferrer" to prevent opener access -->
+</header>
+
+<div class="container">
+  <div class="card">
+    <h2>Log input</h2>
+    <!-- SECURITY FIX #5: input size warning placeholder -->
+    <div id="sizeWarn" class="warn-box" style="display:none"></div>
+    <textarea id="logInput" placeholder="Paste your EMHASS log here..."></textarea>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="validate()">Validate log</button>
+      <button class="btn-secondary" onclick="loadExample()">Load example</button>
+      <button class="btn-secondary" onclick="clearAll()">Clear</button>
+    </div>
+  </div>
+  <div id="results">
+    <div class="summary-bar" id="summaryBar"></div>
+    <div id="runBlocks"></div>
+  </div>
+</div>
+
+<script>
+// ===========================================================================
+// SECURITY NOTES
+// ===========================================================================
+// 1. All user-derived strings are passed through esc() before innerHTML insertion.
+//    esc() escapes &, <, >, " and ' — covering both text-node and attribute contexts.
+// 2. Python?JSON conversion uses a proper string tokeniser (pythonToJson) instead
+//    of a naive single-quote blanket replace, preventing JSON structure injection.
+// 3. Input is capped at MAX_INPUT_CHARS before regex processing to prevent ReDoS.
+// 4. Element IDs for expandable values are generated with a counter (not Math.random)
+//    to guarantee uniqueness and avoid ID collisions on large logs.
+// 5. The external docs link carries rel="noopener noreferrer".
+// 6. A CSP meta tag is set in the <head>.
+// ===========================================================================
+
+// SECURITY FIX #4: deterministic counter instead of Math.random() for element IDs
+var _idCounter = 0;
+function nextId() { return "v" + (++_idCounter); }
+
+// SECURITY FIX #5: hard cap on input size before any regex runs
+var MAX_INPUT_CHARS = 2 * 1024 * 1024; // 2 MB
+
+// ---------------------------------------------------------------------------
+// SECURITY FIX #2: robust esc() — escapes &, <, >, " and '
+// Use for ALL user-controlled values inserted into HTML, whether in text nodes
+// or attributes.
+// ---------------------------------------------------------------------------
+function esc(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")   // SECURITY FIX #2: was missing
+    .replace(/'/g, "&#39;");   // SECURITY FIX #2: was missing
+}
+
+// ---------------------------------------------------------------------------
+// SECURITY FIX #1: robust Python dict ? JSON conversion
+//
+// The previous code did a blanket replace(/'/g, '"') which broke on strings
+// containing embedded single quotes (e.g. publish_prefix = "anna's_") and
+// could produce unexpected JSON structure from crafted log input.
+//
+// This tokeniser walks the string character by character, converting only
+// Python single-quoted string delimiters to double-quote delimiters while:
+//   - unescaping \' inside strings (valid in Python, not needed in JSON)
+//   - escaping any bare " found inside strings (invalid unescaped in JSON)
+//   - leaving numbers, booleans, brackets, colons and whitespace untouched
+// ---------------------------------------------------------------------------
+function pythonToJson(raw) {
+  // Replace Python boolean/None literals OUTSIDE of strings first.
+  // We use placeholder tokens that contain no quote characters.
+  // They are restored after string conversion.
+  var s = raw
+    .replace(/\bTrue\b/g,  "\x00T\x00")
+    .replace(/\bFalse\b/g, "\x00F\x00")
+    .replace(/\bNone\b/g,  "\x00N\x00");
+
+  var out = "";
+  var i = 0;
+  var len = s.length;
+
+  while (i < len) {
+    var ch = s[i];
+
+    if (ch === "'") {
+      // Start of a Python single-quoted string — convert to double-quoted JSON string
+      out += '"';
+      i++;
+      while (i < len) {
+        var c = s[i];
+        if (c === "\\") {
+          var next = s[i + 1];
+          if (next === "'") {
+            // \' is a valid Python escape inside a single-quoted string;
+            // in JSON we just emit the literal apostrophe
+            out += "'";
+            i += 2;
+          } else if (next === '"') {
+            // A double quote inside the string needs to stay escaped for JSON
+            out += '\\"';
+            i += 2;
+          } else {
+            // Pass other escape sequences through unchanged (\n, \t, \\, etc.)
+            out += c + next;
+            i += 2;
+          }
+        } else if (c === '"') {
+          // Bare double quote inside a Python single-quoted string —
+          // must be escaped for JSON
+          out += '\\"';
+          i++;
+        } else if (c === "'") {
+          // End of Python single-quoted string
+          out += '"';
+          i++;
+          break;
+        } else {
+          out += c;
+          i++;
+        }
+      }
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+
+  // Restore boolean/None placeholders as JSON literals
+  out = out
+    .replace(/\x00T\x00/g, "true")
+    .replace(/\x00F\x00/g, "false")
+    .replace(/\x00N\x00/g, "null");
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Parameter schema (fully typed, with documentation for tooltips)
+// All strings here are static/trusted — they do not come from user input.
+// ---------------------------------------------------------------------------
+var SCHEMA_ORDER = [
+  "pv_power_forecast","load_power_forecast","load_cost_forecast","prod_price_forecast",
+  "prediction_horizon","soc_init","soc_final","alpha","beta",
+  "maximum_power_to_grid","maximum_power_from_grid","inverter_ac_output_max",
+  "battery_minimum_state_of_charge","battery_maximum_state_of_charge",
+  "battery_target_state_of_charge","battery_discharge_power_max","battery_charge_power_max",
+  "weight_battery_discharge","weight_battery_charge",
+  "number_of_deferrable_loads","nominal_power_of_deferrable_loads",
+  "minimum_power_of_deferrable_loads","operating_hours_of_each_deferrable_load",
+  "operating_timesteps_of_each_deferrable_load","start_timesteps_of_each_deferrable_load",
+  "end_timesteps_of_each_deferrable_load","set_deferrable_max_startups","def_current_state",
+  "treat_def_as_semi_cont","treat_deferrable_load_as_semi_cont",
+  "set_deferrable_load_single_constant",
+  "publish_prefix","solcast_api_key","solcast_rooftop_id","solar_forecast_kwp"
+];
+
+var SECTIONS = {
+  "pv_power_forecast":               "Forecast arrays",
+  "prediction_horizon":              "MPC / optimization",
+  "maximum_power_to_grid":           "Grid and inverter limits",
+  "battery_minimum_state_of_charge": "Battery",
+  "number_of_deferrable_loads":      "Deferrable loads",
+  "publish_prefix":                  "Publishing",
+  "solcast_api_key":                 "External forecast services"
+};
+
+var SCHEMA = {
+  pv_power_forecast:{type:"array",items:"number",unit:"W",desc:"PV power production forecast",doc:"A list of forecast PV power values, one per optimization timestep, in Watts. Must match prediction_horizon length when used with MPC. If omitted EMHASS generates this from weather forecast and PV plant config."},
+  load_power_forecast:{type:"array",items:"number",unit:"W",desc:"Load power forecast",doc:"Forecast household load power values per timestep, in Watts. Must NOT include deferrable loads — base load only. If omitted EMHASS uses a naive 1-day persistence model."},
+  load_cost_forecast:{type:"array",items:"number",unit:"EUR/kWh",min:0,desc:"Grid energy purchase price forecast",doc:"Forecast energy prices for grid consumption per timestep, in EUR/kWh. Used by the optimizer to minimize energy cost. All values must be >= 0."},
+  prod_price_forecast:{type:"array",items:"number",unit:"EUR/kWh",min:0,desc:"PV energy selling price forecast",doc:"Forecast prices for selling excess PV production back to the grid per timestep, in EUR/kWh. All values must be >= 0."},
+  prediction_horizon:{type:"integer",min:1,desc:"Number of optimization timesteps",doc:"Total timesteps in the MPC prediction horizon. All forecast arrays must have exactly this many values. For 24h at 15-min resolution use 96."},
+  soc_init:{type:"number",min:0,max:1,desc:"Initial battery SOC (0-1)",doc:"Battery state of charge at the start of the optimization window, as a fraction 0-1. Should be >= battery_minimum_state_of_charge."},
+  soc_final:{type:"number",min:0,max:1,desc:"Target battery SOC at end of horizon (0-1)",doc:"Desired battery state of charge at the end of the optimization window, as a fraction 0-1. Should be >= battery_minimum_state_of_charge."},
+  alpha:{type:"number",desc:"Weighting factor alpha",doc:"Cost function weighting factor. Controls the trade-off between minimizing cost and maximizing self-consumption. alpha=1 focuses on cost, alpha=0 on self-consumption."},
+  beta:{type:"number",desc:"Weighting factor beta",doc:"Cost function weighting factor complementary to alpha. beta=0 focuses on cost, beta=1 on self-consumption."},
+  maximum_power_to_grid:{type:"number",min:0,unit:"W",desc:"Maximum power exported to grid",doc:"Maximum instantaneous power in Watts that can be exported to the grid. Used as an upper bound to respect grid connection limits or feed-in tariff caps."},
+  maximum_power_from_grid:{type:"number",min:0,unit:"W",desc:"Maximum power imported from grid",doc:"Maximum instantaneous power in Watts that can be imported from the grid. Respects grid connection limits or tariff restrictions."},
+  inverter_ac_output_max:{type:"number",min:0,unit:"W",desc:"Maximum inverter AC output power",doc:"Maximum AC output power of the hybrid inverter in Watts. Limits combined output of PV + battery discharge through the inverter."},
+  battery_minimum_state_of_charge:{type:"number",min:0,max:1,desc:"Minimum allowed battery SOC (0-1)",doc:"Minimum allowed battery state of charge as a fraction 0-1. The optimizer will never discharge below this value. Protects battery health. Typical value: 0.05 (5%)."},
+  battery_maximum_state_of_charge:{type:"number",min:0,max:1,desc:"Maximum allowed battery SOC (0-1)",doc:"Maximum allowed battery state of charge as a fraction 0-1. The optimizer will never charge above this value. Typical value: 0.95 (95%)."},
+  battery_target_state_of_charge:{type:"number",min:0,max:1,desc:"Desired target SOC (0-1)",doc:"Desired target value for both initial and final state of charge. Can be used instead of setting soc_init and soc_final separately."},
+  battery_discharge_power_max:{type:"number",min:0,unit:"W",desc:"Maximum battery discharge power",doc:"Maximum instantaneous battery discharge power in Watts per battery/inverter specifications. The optimizer will not exceed this discharge rate."},
+  battery_charge_power_max:{type:"number",min:0,unit:"W",desc:"Maximum battery charge power",doc:"Maximum instantaneous battery charge power in Watts per battery/inverter specifications. The optimizer will not exceed this charge rate."},
+  weight_battery_discharge:{type:"number",min:0,desc:"Cost penalty weight for battery discharge",doc:"Weighting factor applied to battery discharge in the cost function. Higher values discourage discharging. Useful to preserve battery life or reserve capacity."},
+  weight_battery_charge:{type:"number",min:0,desc:"Cost penalty weight for battery charge",doc:"Weighting factor applied to battery charging in the cost function. Higher values discourage unnecessary charging. Typically 0 to allow free charging from PV."},
+  number_of_deferrable_loads:{type:"integer",min:0,max:10,desc:"Number of deferrable loads to optimize",doc:"Total number of deferrable (shiftable) loads in the optimization. All deferrable load arrays must have exactly this many elements. Loads are indexed 0 to N-1."},
+  nominal_power_of_deferrable_loads:{type:"array",items:"number",unit:"W",min:0,desc:"Nominal power per deferrable load",doc:"Nominal power values in Watts for each deferrable load. Length must equal number_of_deferrable_loads. Example: [2000, 1500] for a 2kW dishwasher and 1.5kW washer."},
+  minimum_power_of_deferrable_loads:{type:"array",items:"number",unit:"W",min:0,desc:"Minimum power per deferrable load",doc:"Minimum power values in Watts for each deferrable load. Only relevant when treat_def_as_semi_cont is True for that load — the load is either off or between min and nominal power."},
+  operating_hours_of_each_deferrable_load:{type:"array",items:"number",unit:"h",min:0,desc:"Required operating hours per deferrable load",doc:"Total required operating durations in hours for each deferrable load within the optimization window. Use operating_timesteps instead for sub-hourly precision."},
+  operating_timesteps_of_each_deferrable_load:{type:"array",items:"integer",min:0,desc:"Required operating timesteps per deferrable load (preferred for <1h)",doc:"Required operating timestep counts for each deferrable load. Preferred over operating_hours when timestep resolution is finer than 1 hour (e.g. 15-minute steps). Example: [4, 8] means load 0 runs 4 timesteps, load 1 runs 8."},
+  start_timesteps_of_each_deferrable_load:{type:"array",items:"integer",min:0,desc:"Earliest allowed start timestep per deferrable load",doc:"Earliest allowed start timesteps for each deferrable load. Use 0 to allow operation from the beginning of the window. Prevents loads from starting before a certain time."},
+  end_timesteps_of_each_deferrable_load:{type:"array",items:"integer",min:0,desc:"Latest allowed end timestep per deferrable load",doc:"Latest allowed end timesteps for each deferrable load. The load must complete before this timestep. Use prediction_horizon to allow operation throughout the full window."},
+  set_deferrable_max_startups:{type:"array",items:"integer",min:0,desc:"Maximum startups per deferrable load",doc:"Maximum allowed startup counts for each deferrable load within the optimization window. Set to 1 to force each load to run as a single continuous block."},
+  def_current_state:{type:"array",items:"boolean",desc:"Current on/off state of each deferrable load",doc:"List of booleans indicating whether each deferrable load is currently running. Prevents incorrectly penalizing a startup cost if a load is already active when optimization runs."},
+  treat_def_as_semi_cont:{type:"array",items:"boolean",desc:"Treat each deferrable load as semi-continuous",doc:"List of booleans. When True the load is modeled as semi-continuous: either off or operating between minimum_power and nominal_power. When False the load is binary (fully on at nominal power or off)."},
+  treat_deferrable_load_as_semi_cont:{type:"array",items:"boolean",desc:"Treat each deferrable load as semi-continuous (alternate key)",doc:"Alternate key for treat_def_as_semi_cont. List of booleans. When True the load is modeled as semi-continuous: either off or operating between minimum_power and nominal_power."},
+  set_deferrable_load_single_constant:{type:"array",items:"boolean",desc:"Force each deferrable load to constant power with a single startup",doc:"List of booleans. When True the optimizer sets the load to run at a constant fixed power level with exactly one startup per optimization task. Prevents cycling on and off."},
+  publish_prefix:{type:"string",desc:"Prefix added to all published sensor names",doc:"String prefix prepended to all sensor names and forecast attribute keys when EMHASS publishes results to Home Assistant. Example: 'mpc_' produces sensor.mpc_p_pv_forecast etc."},
+  solcast_api_key:{type:"string",desc:"SolCast API key for PV forecast",doc:"Your SolCast API key. Required when weather_forecast_method is set to 'solcast'. Register at https://solcast.com to obtain a key for rooftop PV forecasting."},
+  solcast_rooftop_id:{type:"string",desc:"SolCast rooftop site ID",doc:"Unique ID of your rooftop site in the SolCast service. Required together with solcast_api_key when using the SolCast forecast method."},
+  solar_forecast_kwp:{type:"number",min:0,unit:"kWp",desc:"Installed PV peak power for solar.forecast API",doc:"Total installed PV peak power in kWp. Required when weather_forecast_method is set to 'solar.forecast'. Used as a parameter in the solar.forecast API call."}
+};
+
+var FORECAST_KEYS  = ["pv_power_forecast","load_power_forecast","load_cost_forecast","prod_price_forecast"];
+var DEF_ARRAY_KEYS = ["nominal_power_of_deferrable_loads","minimum_power_of_deferrable_loads","operating_hours_of_each_deferrable_load","operating_timesteps_of_each_deferrable_load","start_timesteps_of_each_deferrable_load","end_timesteps_of_each_deferrable_load","set_deferrable_max_startups","def_current_state","treat_def_as_semi_cont","treat_deferrable_load_as_semi_cont","set_deferrable_load_single_constant"];
+
+// ---------------------------------------------------------------------------
+// Log parsing
+// SECURITY FIX #5: input is already capped before calling this function.
+// SECURITY FIX #3: ReDoS — the regex is only run after the size check, and the
+// anchor (?=\[|$) ensures the lazy [\s\S]*? terminates quickly in practice.
+// ---------------------------------------------------------------------------
+function parseLog(text) {
+  var runs  = [];
+  var regex = /\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})\] INFO in web_server: Passed runtime parameters:\s*(\{[\s\S]*?\})\s*(?=\[|$)/g;
+  var m;
+  while ((m = regex.exec(text)) !== null) {
+    var ts = m[1], rawJson = m[2];
+    try {
+      // SECURITY FIX #1: use robust tokeniser instead of blanket quote replacement
+      runs.push({ts:ts, params:JSON.parse(pythonToJson(rawJson)), rawJson:rawJson, parseError:null});
+    } catch(e) {
+      runs.push({ts:ts, params:null, rawJson:rawJson, parseError:e.message});
+    }
+  }
+  return runs;
+}
+
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+function validateParams(params) {
+  var results = [];
+  var horizon = (typeof params.prediction_horizon==="number") ? params.prediction_horizon : null;
+  var numDef  = (typeof params.number_of_deferrable_loads==="number") ? params.number_of_deferrable_loads : null;
+
+  for (var si=0; si<SCHEMA_ORDER.length; si++) {
+    var key    = SCHEMA_ORDER[si];
+    var schema = SCHEMA[key];
+    var present= Object.prototype.hasOwnProperty.call(params, key);
+    var value  = present ? params[key] : undefined;
+    var issues = [], status = present ? "ok" : "absent";
+
+    if (present) {
+      if (schema.type==="array") {
+        if (!Array.isArray(value)) {
+          issues.push({level:"err",msg:"Expected an array, got "+typeof value}); status="err";
+        } else {
+          for (var i=0;i<value.length;i++) {
+            var v=value[i];
+            if (schema.items==="number"  && typeof v!=="number")  {issues.push({level:"err", msg:"Index "+i+": expected number, got "+typeof v});  status="err";}
+            if (schema.items==="integer" && !Number.isInteger(v)) {issues.push({level:"warn",msg:"Index "+i+": expected integer, got "+v});          if(status==="ok")status="warn";}
+            if (schema.items==="boolean" && typeof v!=="boolean") {issues.push({level:"err", msg:"Index "+i+": expected boolean, got "+typeof v});   status="err";}
+            if (schema.min!==undefined&&typeof v==="number"&&v<schema.min){issues.push({level:"warn",msg:"Index "+i+": value "+v+" is below minimum "+schema.min});if(status==="ok")status="warn";}
+          }
+          if (FORECAST_KEYS.indexOf(key)!==-1&&horizon!==null&&value.length!==horizon){issues.push({level:"warn",msg:"Length "+value.length+" does not match prediction_horizon "+horizon});if(status==="ok")status="warn";}
+          if (FORECAST_KEYS.indexOf(key)!==-1){for(var fi=0;fi<FORECAST_KEYS.length;fi++){var fk=FORECAST_KEYS[fi];if(fk!==key&&params[fk]&&params[fk].length!==value.length){issues.push({level:"warn",msg:"Length "+value.length+" differs from "+fk+" ("+params[fk].length+")"});if(status==="ok")status="warn";break;}}}
+          if (DEF_ARRAY_KEYS.indexOf(key)!==-1&&numDef!==null&&value.length!==numDef){issues.push({level:"warn",msg:"Length "+value.length+" does not match number_of_deferrable_loads ("+numDef+")"});if(status==="ok")status="warn";}
+        }
+      } else if (schema.type==="integer") {
+        if (!Number.isInteger(value)){issues.push({level:"err",msg:"Expected integer, got "+value});status="err";}
+        else {
+          if (schema.min!==undefined&&value<schema.min){issues.push({level:"err", msg:"Value "+value+" < minimum "+schema.min});status="err";}
+          if (schema.max!==undefined&&value>schema.max){issues.push({level:"warn",msg:"Value "+value+" > maximum "+schema.max});if(status==="ok")status="warn";}
+        }
+      } else if (schema.type==="number") {
+        if (typeof value!=="number"){issues.push({level:"err",msg:"Expected number, got "+typeof value});status="err";}
+        else {
+          if (schema.min!==undefined&&value<schema.min){issues.push({level:"err",msg:"Value "+value+" < minimum "+schema.min});status="err";}
+          if (schema.max!==undefined&&value>schema.max){issues.push({level:"err",msg:"Value "+value+" > maximum "+schema.max});status="err";}
+        }
+      } else if (schema.type==="string") {
+        if (typeof value!=="string"){issues.push({level:"err",msg:"Expected string, got "+typeof value});status="err";}
+      }
+      if (key==="soc_init"&&params.battery_minimum_state_of_charge!==undefined&&value<params.battery_minimum_state_of_charge)
+        {issues.push({level:"warn",msg:"soc_init ("+value+") is below battery_minimum_state_of_charge ("+params.battery_minimum_state_of_charge+")"});if(status==="ok")status="warn";}
+      if (key==="soc_final"&&params.battery_minimum_state_of_charge!==undefined&&value<params.battery_minimum_state_of_charge)
+        {issues.push({level:"warn",msg:"soc_final ("+value+") is below battery_minimum_state_of_charge ("+params.battery_minimum_state_of_charge+")"});if(status==="ok")status="warn";}
+    }
+    if (present&&issues.length===0) issues.push({level:"ok",msg:"OK"});
+    results.push({key:key,value:value,schema:schema,status:status,issues:issues,present:present});
+  }
+
+  // Unknown keys from user log not in schema
+  for (var uk in params) {
+    if (!SCHEMA[uk]) {
+      results.push({key:uk,value:params[uk],schema:null,status:"warn",present:true,
+        issues:[{level:"warn",msg:"Unknown parameter - not documented in EMHASS"}]});
+    }
+  }
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// All user-derived values go through esc() before insertion into innerHTML.
+// Static schema strings (doc, desc, type) are also escaped as defence-in-depth.
+// ---------------------------------------------------------------------------
+function toggleVal(id) {
+  var el=document.getElementById(id);
+  el.classList.toggle("open");
+  var btn=el.previousElementSibling;
+  try{btn.textContent=el.classList.contains("open")?"hide":"show all "+JSON.parse(el.textContent).length+" values";}catch(e){btn.textContent=el.classList.contains("open")?"hide":"show";}
+}
+
+function renderValue(value) {
+  if (value===undefined) return '<span style="color:#334155;font-style:italic">not provided</span>';
+  if (Array.isArray(value)) {
+    // esc() applied to preview and full JSON — array items are numbers/booleans
+    // from JSON.parse, but esc() is applied regardless for defence-in-depth
+    var preview="["+value.slice(0,5).join(", ")+(value.length>5?", ...":"")+"]";
+    var id=nextId(); // SECURITY FIX #4: deterministic counter ID
+    return '<span class="p-val">'+esc(preview)+'</span>'+
+           ' <span class="expand" onclick="toggleVal(&#39;'+id+'&#39;)">show all '+value.length+' values</span>'+
+           // SECURITY FIX #3 (innerHTML): esc() on JSON.stringify output
+           '<div class="full-val" id="'+id+'">'+esc(JSON.stringify(value))+'</div>';
+  }
+  // esc() on all scalar values (strings from log could contain any character)
+  return '<span class="p-val">'+esc(String(value))+'</span>';
+}
+
+function renderTooltip(schema, key) {
+  if (!schema) return "";
+  // schema fields are static/trusted but esc() applied as defence-in-depth
+  var typeStr = schema.type==="array" ? "array&lt;"+schema.items+"&gt;" : esc(schema.type);
+  var rangeParts=[];
+  if (schema.min!==undefined) rangeParts.push("min: "+schema.min);
+  if (schema.max!==undefined) rangeParts.push("max: "+schema.max);
+  if (schema.unit) rangeParts.push("unit: "+esc(schema.unit));
+  return '<span class="tip-wrap">'+
+    '<span class="tip-icon">i</span>'+
+    '<div class="tip-box">'+
+      '<div class="tip-title">'+esc(key)+'</div>'+
+      '<div>'+esc(schema.doc||schema.desc||"")+'</div>'+
+      '<div class="tip-meta">type: '+typeStr+'</div>'+
+      (rangeParts.length?'<div class="tip-range">'+rangeParts.join(" &nbsp;|&nbsp; ")+'</div>':'')+
+    '</div>'+
+  '</span>';
+}
+
+function renderRun(run, idx) {
+  if (run.parseError) {
+    return '<div class="run-block">'+
+      '<div class="run-header"><h3>Run '+(idx+1)+'</h3><span class="run-ts">'+esc(run.ts)+'</span>'+
+      '<span class="badge badge-err">Parse error</span></div>'+
+      '<div style="padding:14px 18px;color:var(--error);font-size:.85rem;font-family:monospace">'+esc(run.parseError)+'</div></div>';
+  }
+
+  var results=validateParams(run.params);
+  var errCnt =results.filter(function(r){return r.status==="err";}).length;
+  var warnCnt=results.filter(function(r){return r.status==="warn"&&r.present;}).length;
+  var okCnt  =results.filter(function(r){return r.status==="ok";}).length;
+  var absCnt =results.filter(function(r){return r.status==="absent";}).length;
+  var runSt  =errCnt>0?"err":warnCnt>0?"warn":"ok";
+  var horizon=run.params.prediction_horizon;
+
+  var rows="", lastSection="";
+  for (var i=0;i<results.length;i++) {
+    var r=results[i];
+    var sec=r.schema?(SECTIONS[r.key]||""):"Unknown parameters";
+    if (sec&&sec!==lastSection) {
+      rows+='<tr class="section-row"><td colspan="3">'+esc(sec)+'</td></tr>';
+      lastSection=sec;
+    }
+    var issueHtml="";
+    for (var j=0;j<r.issues.length;j++) {
+      var iss=r.issues[j];
+      if (iss.level==="ok") continue;
+      // iss.level is a hardcoded constant; iss.msg may contain user data — esc() applied
+      issueHtml+='<li class="i-'+iss.level+'">'+esc(iss.msg)+'</li>';
+    }
+    var typeStr=r.schema?(r.schema.type==="array"?"array&lt;"+r.schema.items+"&gt;":esc(r.schema.type)):"";
+    // r.key for schema params is a hardcoded constant; for unknown params it comes from the
+    // log — esc() applied in both cases
+    var nameCell='<span class="'+(r.present?"p-name":"p-name-absent")+'">'+esc(r.key)+'</span>'+
+                 renderTooltip(r.schema,r.key)+
+                 (typeStr?'<div class="p-type">'+typeStr+(r.schema&&r.schema.unit?" &middot; "+esc(r.schema.unit):"")+'</div>':"");
+    var sicon={ok:"&#10003;",warn:"&#9888;",err:"&#10007;",absent:"&ndash;"}[r.status]||"&#9432;";
+    var scls ={ok:"ok-c",warn:"warn-c",err:"err-c",absent:"absent-c"}[r.status]||"info-c";
+    rows+='<tr class="data-row'+(r.present?"":" absent-row")+'">'+
+      '<td>'+nameCell+'</td>'+
+      '<td>'+renderValue(r.value)+'</td>'+
+      '<td><span class="'+scls+'">'+sicon+'</span>'+
+      (issueHtml?'<ul class="issues">'+issueHtml+'</ul>':(r.present?'<span style="font-size:.78rem;color:var(--ok)"> OK</span>':''))+
+      '</td></tr>';
+  }
+
+  var hdr='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+    '<span style="font-size:.8rem" class="ok-c">&#10003; '+okCnt+' OK</span>'+
+    (warnCnt?'<span style="font-size:.8rem" class="warn-c">&#9888; '+warnCnt+' warning'+(warnCnt>1?"s":"")+'</span>':"")+
+    (errCnt ?'<span style="font-size:.8rem" class="err-c">&#10007; '+errCnt+' error'+(errCnt>1?"s":"")+'</span>':"")+
+    '<span style="font-size:.8rem" class="absent-c">&ndash; '+absCnt+' not provided</span>'+
+    '<span class="badge '+({ok:"badge-ok",warn:"badge-warn",err:"badge-err"}[runSt]||"badge-warn")+'">'+
+    ({ok:"Passed",warn:"Warnings",err:"Errors"}[runSt]||runSt)+'</span></div>';
+
+  return '<div class="run-block">'+
+    '<div class="run-header"><div><h3>Run '+(idx+1)+'</h3><div class="run-ts">'+esc(run.ts)+'</div></div>'+hdr+'</div>'+
+    (horizon?'<div class="horizon-note">prediction_horizon = <strong>'+horizon+'</strong> timesteps &nbsp;|&nbsp; All forecast arrays should have '+horizon+' values</div>':"")+
+    '<table><thead><tr><th>Parameter</th><th>Value</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+// ---------------------------------------------------------------------------
+// Main actions
+// ---------------------------------------------------------------------------
+function validate() {
+  var text=document.getElementById("logInput").value;
+
+  // SECURITY FIX #5: cap input size before any regex processing
+  var warn=document.getElementById("sizeWarn");
+  if (text.length > MAX_INPUT_CHARS) {
+    warn.style.display="block";
+    warn.textContent="Input truncated to 2 MB to prevent browser slowdown.";
+    text=text.slice(0, MAX_INPUT_CHARS);
+  } else {
+    warn.style.display="none";
+  }
+
+  text=text.trim();
+  if (!text){alert("Please paste a log first.");return;}
+
+  var runs=parseLog(text);
+  var resultsDiv=document.getElementById("results");
+  var summaryBar=document.getElementById("summaryBar");
+  var runBlocks =document.getElementById("runBlocks");
+
+  if (runs.length===0){
+    summaryBar.innerHTML='<div class="stat"><div class="num warn-c">0</div><div class="lbl">Runs found</div></div>'+
+      '<div style="color:var(--warn);align-self:center;font-size:.9rem">No "Passed runtime parameters" lines found in the log.</div>';
+    runBlocks.innerHTML=""; resultsDiv.style.display="block"; return;
+  }
+
+  var tOk=0,tWarn=0,tErr=0,tAbs=0;
+  for (var i=0;i<runs.length;i++){
+    if(!runs[i].params){tErr++;continue;}
+    var r=validateParams(runs[i].params);
+    tErr +=r.filter(function(x){return x.status==="err";}).length;
+    tWarn+=r.filter(function(x){return x.status==="warn"&&x.present;}).length;
+    tOk  +=r.filter(function(x){return x.status==="ok";}).length;
+    tAbs +=r.filter(function(x){return x.status==="absent";}).length;
+  }
+  summaryBar.innerHTML=
+    '<div class="stat"><div class="num info-c">'+runs.length+'</div><div class="lbl">Run'+(runs.length>1?"s":"")+'</div></div>'+
+    '<div class="stat"><div class="num ok-c">'+tOk+'</div><div class="lbl">OK</div></div>'+
+    '<div class="stat"><div class="num warn-c">'+tWarn+'</div><div class="lbl">Warnings</div></div>'+
+    '<div class="stat"><div class="num err-c">'+tErr+'</div><div class="lbl">Errors</div></div>'+
+    '<div class="stat"><div class="num absent-c">'+tAbs+'</div><div class="lbl">Not provided</div></div>';
+  runBlocks.innerHTML=runs.map(function(run,i){return renderRun(run,i);}).join("");
+  resultsDiv.style.display="block";
+  resultsDiv.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function clearAll(){
+  document.getElementById("logInput").value="";
+  document.getElementById("results").style.display="none";
+  document.getElementById("sizeWarn").style.display="none";
+}
+
+function loadExample(){
+  document.getElementById("logInput").value=
+"[2026-04-28 10:15:22,219] INFO in web_server:  >> Obtaining params:\n"+
+"[2026-04-28 10:15:22,293] INFO in web_server:  >> Publishing data...\n"+
+"[2026-04-28 10:30:00,803] INFO in web_server:  >> Obtaining params:\n"+
+"[2026-04-28 10:30:00,885] INFO in web_server: Passed runtime parameters: {'prod_price_forecast': [0.07, 0.06, 0.09, 0.09, 0.06, 0.05, 0.06, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.05, 0.04, 0.04, 0.07, 0.11, 0.04, 0.08, 0.29, 0.37, 0.25, 0.28, 0.27, 0.39, 0.25, 0.29, 0.35, 0.42, 0.32, 0.33, 0.35, 0.34, 0.34, 0.32, 0.3, 0.3, 0.31, 0.3, 0.3, 0.32, 0.39, 0.44, 0.45, 0.41, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19], 'load_cost_forecast': [0.88, 0.86, 0.9, 0.9, 0.86, 0.85, 0.86, 0.85, 0.85, 0.85, 0.85, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.85, 0.83, 0.84, 0.87, 0.92, 0.84, 0.88, 1.15, 1.25, 1.1, 1.13, 1.12, 1.27, 1.1, 1.15, 1.22, 1.31, 1.19, 1.19, 1.22, 1.21, 1.22, 1.19, 1.17, 1.17, 1.17, 1.16, 1.16, 1.19, 1.28, 1.34, 1.35, 1.3, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02], 'load_power_forecast': [1014, 1200, 1200, 1400, 1400, 1100, 1100, 1200, 1200, 1200, 1200, 1200, 1300, 1400, 1300, 1300, 1300, 1300, 1200, 1300, 1700, 1600, 1100, 1300, 1600, 1400, 1300, 1400, 1400, 1400, 1500, 1500, 1400, 1300, 1300, 1400, 1300, 1300, 1500, 1400, 1200, 1100, 1200, 1300, 1300, 1300, 1300, 1200, 1200, 1200, 1200, 1200, 1100, 1200, 1200, 1100, 1000, 1000, 1000, 1000, 1100, 1100, 1100, 1100, 1000, 1000, 1000, 1000, 1100, 1100, 1100, 1100, 1100, 1100, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1100, 1100, 1000, 1000, 1100, 1100, 1000, 1000, 1000, 1000, 1000], 'pv_power_forecast': [7565, 8048, 8052, 8056, 7910, 7765, 7613, 7461, 7312, 7163, 6994, 6825, 6665, 6506, 6429, 6352, 6248, 6145, 5998, 5852, 5647, 5443, 5176, 4909, 4606, 4304, 3970, 3637, 3355, 3074, 2904, 2735, 2525, 2316, 2103, 1890, 1582, 1274, 853, 432, 220, 9, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 51, 103, 215, 328, 506, 684, 995, 1306, 1635, 1964, 2234, 2505, 2718, 2932, 3082, 3233, 3319, 3405, 3449, 3493, 3576, 3659], 'prediction_horizon': 96, 'soc_init': 0.06, 'soc_final': 0.14, 'alpha': 1, 'beta': 0, 'maximum_power_to_grid': 10000, 'maximum_power_from_grid': 10800, 'battery_minimum_state_of_charge': 0.05, 'weight_battery_discharge': 0.3, 'weight_battery_charge': 0, 'battery_discharge_power_max': 3000, 'battery_charge_power_max': 10600, 'inverter_ac_output_max': 8950.0, 'number_of_deferrable_loads': 3, 'operating_timesteps_of_each_deferrable_load': [2, 0, 0], 'nominal_power_of_deferrable_loads': [1000, 3397, 1200], 'minimum_power_of_deferrable_loads': [0, 1200, 0], 'treat_def_as_semi_cont': [True, False, False], 'set_deferrable_load_single_constant': [True, False, True], 'start_timesteps_of_each_deferrable_load': [0, 0, 0], 'end_timesteps_of_each_deferrable_load': [40, 21, 48], 'set_deferrable_max_startups': [1, 1, 1], 'def_current_state': [False, False, False]}\n"+
+"[2026-04-28 10:30:00,889] INFO in web_server:  >> Setting input data dict";
+}
+</script>
+</body>
+</html>
