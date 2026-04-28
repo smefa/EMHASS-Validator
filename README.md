@@ -8,7 +8,7 @@ Use it directly from https://smefa.github.io/EMHASS-Validator/emhass-parameter-v
 For local use
 1. Download `emhass-log-validator.html`
 2. Open it in any web browser — no server or internet connection required
-3. To get the logs from MEHASS in Home Assistant go to Settings / Apps / EMAHSS / Logs
+3. To get the logs from EMHASS in Home Assistant go to Settings / Apps / EMHASS / Logs
 4. Paste your EMHASS log and click **Validate log**
 
 ## What it does
