@@ -3,7 +3,9 @@
 A single-file browser tool for validating `Passed runtime parameters` entries in your [EMHASS](https://emhass.readthedocs.io/en/latest/) logs.
 
 ## Usage
+Use it directly from https://smefa.github.io/EMHASS-Validator/emhass-parameter-validator.html
 
+For local use
 1. Download `emhass-log-validator.html`
 2. Open it in any web browser — no server or internet connection required
 3. To get the logs from MEHASS in Home Assistant go to Settings / Apps / EMAHSS / Logs
