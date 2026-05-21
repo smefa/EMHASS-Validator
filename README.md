@@ -1,4 +1,4 @@
-# EMHASS Runtime Parameter Validator
+# EMHASS Runtime Parameter log Validator
 
 A single-file browser tool for validating `Passed runtime parameters` entries in your [EMHASS](https://emhass.readthedocs.io/en/latest/) logs.
 
