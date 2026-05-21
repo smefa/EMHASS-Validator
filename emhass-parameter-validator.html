@@ -229,8 +229,9 @@ function pythonToJson(raw) {
 // ---------------------------------------------------------------------------
 var SCHEMA_ORDER = [
   "pv_power_forecast","load_power_forecast","load_cost_forecast","prod_price_forecast",
+  "delta_forecast_daily",
   "prediction_horizon","soc_init","soc_final","alpha","beta",
-  "maximum_power_to_grid","maximum_power_from_grid","inverter_ac_output_max",
+  "maximum_power_to_grid","maximum_power_from_grid","inverter_ac_output_max","inverter_stress_cost",
   "battery_minimum_state_of_charge","battery_maximum_state_of_charge",
   "battery_target_state_of_charge","battery_discharge_power_max","battery_charge_power_max",
   "weight_battery_discharge","weight_battery_charge",
@@ -245,6 +246,7 @@ var SCHEMA_ORDER = [
 
 var SECTIONS = {
   "pv_power_forecast":               "Forecast arrays",
+  "delta_forecast_daily":            "Forecast configuration",
   "prediction_horizon":              "MPC / optimization",
   "maximum_power_to_grid":           "Grid and inverter limits",
   "battery_minimum_state_of_charge": "Battery",
@@ -258,6 +260,7 @@ var SCHEMA = {
   load_power_forecast:{type:"array",items:"number",unit:"W",desc:"Load power forecast",doc:"Forecast household load power values per timestep, in Watts. Must NOT include deferrable loads — base load only. If omitted EMHASS uses a naive 1-day persistence model."},
   load_cost_forecast:{type:"array",items:"number",unit:"EUR/kWh",min:0,desc:"Grid energy purchase price forecast",doc:"Forecast energy prices for grid consumption per timestep, in EUR/kWh. Used by the optimizer to minimize energy cost. All values must be >= 0."},
   prod_price_forecast:{type:"array",items:"number",unit:"EUR/kWh",min:0,desc:"PV energy selling price forecast",doc:"Forecast prices for selling excess PV production back to the grid per timestep, in EUR/kWh. All values must be >= 0."},
+  delta_forecast_daily:{type:"number",min:0,unit:"days",desc:"Naive forecast offset in days",doc:"Number of days used as the lookback offset for naive persistence forecasts. Example: 1 uses the same period from yesterday, 2 uses two days ago."},
   prediction_horizon:{type:"integer",min:1,desc:"Number of optimization timesteps",doc:"Total timesteps in the MPC prediction horizon. All forecast arrays must have exactly this many values. For 24h at 15-min resolution use 96."},
   soc_init:{type:"number",min:0,max:1,desc:"Initial battery SOC (0-1)",doc:"Battery state of charge at the start of the optimization window, as a fraction 0-1. Should be >= battery_minimum_state_of_charge."},
   soc_final:{type:"number",min:0,max:1,desc:"Target battery SOC at end of horizon (0-1)",doc:"Desired battery state of charge at the end of the optimization window, as a fraction 0-1. Should be >= battery_minimum_state_of_charge."},
@@ -273,6 +276,7 @@ var SCHEMA = {
   battery_charge_power_max:{type:"number",min:0,unit:"W",desc:"Maximum battery charge power",doc:"Maximum instantaneous battery charge power in Watts per battery/inverter specifications. The optimizer will not exceed this charge rate."},
   weight_battery_discharge:{type:"number",min:0,desc:"Cost penalty weight for battery discharge",doc:"Weighting factor applied to battery discharge in the cost function. Higher values discourage discharging. Useful to preserve battery life or reserve capacity."},
   weight_battery_charge:{type:"number",min:0,desc:"Cost penalty weight for battery charge",doc:"Weighting factor applied to battery charging in the cost function. Higher values discourage unnecessary charging. Typically 0 to allow free charging from PV."},
+  inverter_stress_cost:{type:"number",min:0,desc:"Virtual inverter stress penalty cost",doc:"Optional cost penalty to discourage high-power inverter operation. Higher values encourage smoother, lower-power charge/discharge operation."},
   number_of_deferrable_loads:{type:"integer",min:0,max:10,desc:"Number of deferrable loads to optimize",doc:"Total number of deferrable (shiftable) loads in the optimization. All deferrable load arrays must have exactly this many elements. Loads are indexed 0 to N-1."},
   nominal_power_of_deferrable_loads:{type:"array",items:"number",unit:"W",min:0,desc:"Nominal power per deferrable load",doc:"Nominal power values in Watts for each deferrable load. Length must equal number_of_deferrable_loads. Example: [2000, 1500] for a 2kW dishwasher and 1.5kW washer."},
   minimum_power_of_deferrable_loads:{type:"array",items:"number",unit:"W",min:0,desc:"Minimum power per deferrable load",doc:"Minimum power values in Watts for each deferrable load. Only relevant when treat_def_as_semi_cont is True for that load — the load is either off or between min and nominal power."},
